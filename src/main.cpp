@@ -73,20 +73,16 @@ void loop() {
 
     if (input.buttonA) {
         analogWrite(MOTOR_ENA, 255);
-        digitalWrite(MOTOR_IN1, 0);
+        digitalWrite(MOTOR_IN1, 1);
         digitalWrite(MOTOR_IN2, 0);
     } else if (input.buttonB) {
-        analogWrite(MOTOR_ENA, 0);
-        digitalWrite(MOTOR_IN1, 1);
+        analogWrite(MOTOR_ENA, 255);
+        digitalWrite(MOTOR_IN1, 0);
         digitalWrite(MOTOR_IN2, 1);
-    } else if (input.buttonStart) {
+    } else {
         analogWrite(MOTOR_ENA, 255);
         digitalWrite(MOTOR_IN1, 1);
         digitalWrite(MOTOR_IN2, 1);
-    } else {
-        analogWrite(MOTOR_ENA, abs_speed);
-        digitalWrite(MOTOR_IN1, direction);
-        digitalWrite(MOTOR_IN2, !direction);
     }
 
     delay(100);
@@ -96,6 +92,8 @@ void loop() {
 // https://docs.arduino.cc/static/74c80ed6511cded14f143abb4abd96a7/a6d36/pinout.png
 
 // Motor modes
+
+// Stopping
 
 // Free spin.
 // analogWrite(MOTOR_ENA, 0);
@@ -115,4 +113,16 @@ void loop() {
 // Brake.
 // analogWrite(MOTOR_ENA, 255);
 // digitalWrite(MOTOR_IN1, 1);
+// digitalWrite(MOTOR_IN2, 1);
+
+// Direction
+
+// Anti-clockwise, (wheel at front)
+// analogWrite(MOTOR_ENA, 255);
+// digitalWrite(MOTOR_IN1, 1);
+// digitalWrite(MOTOR_IN2, 0);
+
+//// Clockwise, (wheel at front)
+// analogWrite(MOTOR_ENA, 255);
+// digitalWrite(MOTOR_IN1, 0);
 // digitalWrite(MOTOR_IN2, 1);
