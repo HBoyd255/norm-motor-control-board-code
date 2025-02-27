@@ -1,0 +1,30 @@
+// This is the content of the pinDefs.h file that declares what function is
+// given to each pin.
+
+// Motors
+
+// Front Left
+#define FRONT_LEFT_MOTOR_SPEED_PIN D3
+#define FRONT_LEFT_MOTOR_ENCODER_PRI_PIN D2
+#define FRONT_LEFT_MOTOR_ENCODER_SEC_PIN A4
+
+// Front Right
+#define FRONT_RIGHT_MOTOR_SPEED_PIN D5
+#define FRONT_RIGHT_MOTOR_ENCODER_PRI_PIN D4
+#define FRONT_RIGHT_MOTOR_ENCODER_SEC_PIN A5
+
+// Back Left
+#define BACK_LEFT_MOTOR_SPEED_PIN D6
+#define BACK_LEFT_MOTOR_ENCODER_PRI_PIN D8
+#define BACK_LEFT_MOTOR_ENCODER_SEC_PIN A3
+
+// Back Right
+#define BACK_RIGHT_MOTOR_SPEED_PIN D9
+#define BACK_RIGHT_MOTOR_ENCODER_PRI_PIN D7
+#define BACK_RIGHT_MOTOR_ENCODER_SEC_PIN A6
+
+
+// Shift Reg
+#define SHIFT_REG_DATA A2
+#define SHIFT_REG_LATCH A1
+#define SHIFT_REG_CLOCK A0
