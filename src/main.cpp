@@ -28,7 +28,7 @@
 
 #include <Arduino.h>
 
-#define SERIAL_BAUD_RATE 38400
+#define SERIAL_BAUD_RATE 115200
 
 #include <NESControllerInterface.h>
 #include <Servo.h>
@@ -43,8 +43,8 @@
 #define BACKWARD 0b10
 #define STOP 0b11
 
-#define MAX_POWER 255
-#define MAX_SPEED 80
+#define MAX_POWER 204
+#define MAX_SPEED 100
 
 Servo servo;
 const int servoPin = 10;
@@ -233,11 +233,27 @@ void getSpeedsFromNESInput(NESInput input, int8_t *speeds) {
     speeds[3] = brSpeed_abs;
 }
 
+void getSpeedsFromSerial(int8_t *speeds) {
+    uint8_t buffer[7];
+
+    Serial.readBytes(buffer, 7);
+
+    speeds[0] = buffer[1];
+    speeds[1] = buffer[2];
+    speeds[2] = buffer[3];
+    speeds[3] = buffer[4];
+
+    buffer[0]++;
+    Serial.write(buffer, 7);
+}
+
 void calculateMotorPowers(int8_t *speeds, uint8_t *motorPowers) {
     // TODO add functionality to glide from the current speed to the new speed
     // smoothly.
 
     int16_t power;
+
+    const float powerMultiplier = MAX_POWER / MAX_SPEED;
 
     for (int i = 0; i < 4; i++) {
         // If the speed is 0, set the power to max to facilitate a brake. This
@@ -246,7 +262,7 @@ void calculateMotorPowers(int8_t *speeds, uint8_t *motorPowers) {
         if (speeds[i] == 0) {
             power = MAX_POWER;
         } else {
-            power = abs(speeds[i]) * 2.55;
+            power = abs(speeds[i]) * powerMultiplier;
         }
 
         if (power > MAX_POWER) {
@@ -259,8 +275,6 @@ void calculateMotorPowers(int8_t *speeds, uint8_t *motorPowers) {
 
 void setMotors(int8_t *speeds) {
     uint8_t DirectionCode = getDirectionCode(speeds);
-
-    printByte(DirectionCode);
 
     uint8_t motorPowers[4];
 
@@ -277,10 +291,23 @@ void loop() {
     NESInput input = nes.getNESInput();
 
     // Bipolar percentages representing the speed of each motor.
-    int8_t speeds[4] = {0, 0, 0, 0};
+    static int8_t speeds[4] = {0, 0, 0, 0};
+
+    static uint32_t lastCommandTime = 0;
 
     if (input.anyButtonPressed()) {
         getSpeedsFromNESInput(input, speeds);
+        lastCommandTime = millis();
+    } else if (Serial.available()) {
+        getSpeedsFromSerial(speeds);
+        lastCommandTime = millis();
+    }
+
+    if (lastCommandTime + 100 < millis()) {
+        speeds[0] = 0;
+        speeds[1] = 0;
+        speeds[2] = 0;
+        speeds[3] = 0;
     }
 
     setMotors(speeds);
