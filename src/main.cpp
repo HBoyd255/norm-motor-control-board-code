@@ -31,18 +31,25 @@
 #define SERIAL_BAUD_RATE 38400
 
 #include <NESControllerInterface.h>
+#include <Servo.h>
 #include <pinDefs.h>
+#include <printers.h>
 
-int speed = 200;
-
-#define DATA_PIN 10
-#define LOAD_PIN 11
-#define CLOCK_PIN 12
+#define NES_DATA_PIN 12
+#define NES_LOAD_PIN 13
+#define NES_CLOCK_PIN A7
 
 #define FORWARD 0b01
 #define BACKWARD 0b10
+#define STOP 0b11
 
-NESControllerInterface nes(DATA_PIN, LOAD_PIN, CLOCK_PIN);
+#define MAX_POWER 255
+#define MAX_SPEED 80
+
+Servo servo;
+const int servoPin = 10;
+
+NESControllerInterface nes(NES_DATA_PIN, NES_LOAD_PIN, NES_CLOCK_PIN);
 
 void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
@@ -56,12 +63,12 @@ void setup() {
     pinMode(BACK_LEFT_MOTOR_SPEED_PIN, OUTPUT);
     pinMode(BACK_RIGHT_MOTOR_SPEED_PIN, OUTPUT);
 
-    analogWrite(FRONT_LEFT_MOTOR_SPEED_PIN, speed);
-    analogWrite(FRONT_RIGHT_MOTOR_SPEED_PIN, speed);
-    analogWrite(BACK_LEFT_MOTOR_SPEED_PIN, speed);
-    analogWrite(BACK_RIGHT_MOTOR_SPEED_PIN, speed);
+    analogWrite(FRONT_LEFT_MOTOR_SPEED_PIN, 0);
+    analogWrite(FRONT_RIGHT_MOTOR_SPEED_PIN, 0);
+    analogWrite(BACK_LEFT_MOTOR_SPEED_PIN, 0);
+    analogWrite(BACK_RIGHT_MOTOR_SPEED_PIN, 0);
 
-    pinMode(LED_BUILTIN, OUTPUT);
+    servo.attach(servoPin);
 }
 
 void shiftOutWrapper(uint8_t value) {
@@ -107,19 +114,48 @@ void normalize(float *a, float *b, float *c, float *d) {
     *d /= denominator;
 }
 
-uint8_t getDirectionCode(float FL_speed, float FR_speed, float BL_speed,
-                         float BR_speed) {
-    // Forwards = 01
-    // Backwards = 10
-
-    // Order = BR, BL, FL, FR
+uint8_t getDirectionCode(int8_t *speeds) {
+    // Unlike the standard order of motors, (FL,FR,BL,BR).
+    // The direction code is ordered as (BR, BL, FL, FR), where FR is the least
+    // significant bit. BR BL FL FR
 
     uint8_t DirectionCode = 0;
 
-    uint8_t FL_code = (FL_speed >= 0) ? FORWARD : BACKWARD;
-    uint8_t FR_code = (FR_speed >= 0) ? FORWARD : BACKWARD;
-    uint8_t BL_code = (BL_speed >= 0) ? FORWARD : BACKWARD;
-    uint8_t BR_code = (BR_speed >= 0) ? FORWARD : BACKWARD;
+    uint8_t FL_code;
+    if (speeds[0] > 0) {
+        FL_code = FORWARD;
+    } else if (speeds[0] < 0) {
+        FL_code = BACKWARD;
+    } else {
+        FL_code = STOP;
+    }
+
+    uint8_t FR_code;
+    if (speeds[1] > 0) {
+        FR_code = FORWARD;
+    } else if (speeds[1] < 0) {
+        FR_code = BACKWARD;
+    } else {
+        FR_code = STOP;
+    }
+
+    uint8_t BL_code;
+    if (speeds[2] > 0) {
+        BL_code = FORWARD;
+    } else if (speeds[2] < 0) {
+        BL_code = BACKWARD;
+    } else {
+        BL_code = STOP;
+    }
+
+    uint8_t BR_code;
+    if (speeds[3] > 0) {
+        BR_code = FORWARD;
+    } else if (speeds[3] < 0) {
+        BR_code = BACKWARD;
+    } else {
+        BR_code = STOP;
+    }
 
     DirectionCode |= FR_code << 0;
     DirectionCode |= FL_code << 2;
@@ -129,10 +165,9 @@ uint8_t getDirectionCode(float FL_speed, float FR_speed, float BL_speed,
     return DirectionCode;
 }
 
-void loop() {
-    NESInput input = nes.getNESInput();
-
-    static int driveSpeed = 100;
+void getSpeedsFromNESInput(NESInput input, int8_t *speeds) {
+    // A percentage of the maximum speed.
+    static uint8_t driveSpeed = MAX_SPEED / 2;
 
     float FL_speed = 0;
     float FR_speed = 0;
@@ -177,36 +212,76 @@ void loop() {
     }
 
     if (input.buttonA) {
-        driveSpeed = 200;
+        driveSpeed = MAX_SPEED;
     } else if (input.buttonB) {
-        driveSpeed = 100;
+        driveSpeed = MAX_SPEED / 2;
     }
 
+    // Set all the speeds to between -1 and 1.
     normalize(&FL_speed, &FR_speed, &BL_speed, &BR_speed);
 
-    uint8_t DirectionCode =
-        getDirectionCode(FL_speed, FR_speed, BL_speed, BR_speed);
+    // Calculate the speeds of each motor as an integer between 0 and 255.
+    int8_t flSpeed_abs = FL_speed * driveSpeed;
+    int8_t frSpeed_abs = FR_speed * driveSpeed;
+    int8_t blSpeed_abs = BL_speed * driveSpeed;
+    int8_t brSpeed_abs = BR_speed * driveSpeed;
 
-    int flSpeed_abs = abs(FL_speed) * driveSpeed;
-    int frSpeed_abs = abs(FR_speed) * driveSpeed;
-    int blSpeed_abs = abs(BL_speed) * driveSpeed;
-    int brSpeed_abs = abs(BR_speed) * driveSpeed;
+    // Set the speeds, which are returned by reference.
+    speeds[0] = flSpeed_abs;
+    speeds[1] = frSpeed_abs;
+    speeds[2] = blSpeed_abs;
+    speeds[3] = brSpeed_abs;
+}
+
+void calculateMotorPowers(int8_t *speeds, uint8_t *motorPowers) {
+    // TODO add functionality to glide from the current speed to the new speed
+    // smoothly.
+
+    int16_t power;
+
+    for (int i = 0; i < 4; i++) {
+        // If the speed is 0, set the power to max to facilitate a brake. This
+        // relies on getDirectionCode() correctly setting the direction code to
+        // 0b11.
+        if (speeds[i] == 0) {
+            power = MAX_POWER;
+        } else {
+            power = abs(speeds[i]) * 2.55;
+        }
+
+        if (power > MAX_POWER) {
+            power = MAX_POWER;
+        }
+
+        motorPowers[i] = power;
+    }
+}
+
+void setMotors(int8_t *speeds) {
+    uint8_t DirectionCode = getDirectionCode(speeds);
+
+    printByte(DirectionCode);
+
+    uint8_t motorPowers[4];
+
+    calculateMotorPowers(speeds, motorPowers);
 
     shiftOutWrapper(DirectionCode);
+    analogWrite(FRONT_LEFT_MOTOR_SPEED_PIN, motorPowers[0]);
+    analogWrite(FRONT_RIGHT_MOTOR_SPEED_PIN, motorPowers[1]);
+    analogWrite(BACK_LEFT_MOTOR_SPEED_PIN, motorPowers[2]);
+    analogWrite(BACK_RIGHT_MOTOR_SPEED_PIN, motorPowers[3]);
+}
 
-    analogWrite(FRONT_LEFT_MOTOR_SPEED_PIN, flSpeed_abs);
-    analogWrite(FRONT_RIGHT_MOTOR_SPEED_PIN, frSpeed_abs);
-    analogWrite(BACK_LEFT_MOTOR_SPEED_PIN, blSpeed_abs);
-    analogWrite(BACK_RIGHT_MOTOR_SPEED_PIN, brSpeed_abs);
+void loop() {
+    NESInput input = nes.getNESInput();
 
-    Serial.print(" flSpeed_abs:");
-    Serial.print(flSpeed_abs);
-    Serial.print(" frSpeed_abs:");
-    Serial.print(frSpeed_abs);
-    Serial.print(" blSpeed_abs:");
-    Serial.print(blSpeed_abs);
-    Serial.print(" brSpeed_abs:");
-    Serial.print(brSpeed_abs);
-    Serial.print(" DirectionCode:");
-    Serial.println(DirectionCode);
+    // Bipolar percentages representing the speed of each motor.
+    int8_t speeds[4] = {0, 0, 0, 0};
+
+    if (input.anyButtonPressed()) {
+        getSpeedsFromNESInput(input, speeds);
+    }
+
+    setMotors(speeds);
 }
