@@ -28,3 +28,12 @@ robot was commanded to stop, it stopped after 0.64m.
 
 To brake the robot, the motors were set to full power, and the code 0b11 is sent
 to the motor driver.
+
+
+
+# Walking Speed
+
+Distance 8.4m
+Time 5.2s
+
+Equal to a walk speed of 1.6m/s

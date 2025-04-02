@@ -31,7 +31,6 @@
 #define SERIAL_BAUD_RATE 115200
 
 #include <NESControllerInterface.h>
-#include <Servo.h>
 #include <pinDefs.h>
 #include <printers.h>
 
@@ -45,9 +44,6 @@
 
 #define MAX_POWER 204
 #define MAX_SPEED 100
-
-Servo servo;
-const int servoPin = 10;
 
 NESControllerInterface nes(NES_DATA_PIN, NES_LOAD_PIN, NES_CLOCK_PIN);
 
@@ -67,8 +63,6 @@ void setup() {
     analogWrite(FRONT_RIGHT_MOTOR_SPEED_PIN, 0);
     analogWrite(BACK_LEFT_MOTOR_SPEED_PIN, 0);
     analogWrite(BACK_RIGHT_MOTOR_SPEED_PIN, 0);
-
-    servo.attach(servoPin);
 }
 
 void shiftOutWrapper(uint8_t value) {
@@ -214,7 +208,7 @@ void getSpeedsFromNESInput(NESInput input, int8_t *speeds) {
     if (input.buttonA) {
         driveSpeed = MAX_SPEED;
     } else if (input.buttonB) {
-        driveSpeed = MAX_SPEED / 2;
+        driveSpeed = MAX_SPEED >> 1;
     }
 
     // Set all the speeds to between -1 and 1.
@@ -234,9 +228,12 @@ void getSpeedsFromNESInput(NESInput input, int8_t *speeds) {
 }
 
 void getSpeedsFromSerial(int8_t *speeds) {
-    uint8_t buffer[7];
+    uint8_t buffer[5];
 
-    Serial.readBytes(buffer, 7);
+    while (Serial.available() < 5) {
+    }
+
+    Serial.readBytes(buffer, 5);
 
     speeds[0] = buffer[1];
     speeds[1] = buffer[2];
@@ -244,7 +241,7 @@ void getSpeedsFromSerial(int8_t *speeds) {
     speeds[3] = buffer[4];
 
     buffer[0]++;
-    Serial.write(buffer, 7);
+    Serial.write(buffer, 5);
 }
 
 void calculateMotorPowers(int8_t *speeds, uint8_t *motorPowers) {
@@ -300,6 +297,7 @@ void loop() {
         lastCommandTime = millis();
     } else if (Serial.available()) {
         getSpeedsFromSerial(speeds);
+
         lastCommandTime = millis();
     }
 
